@@ -1,0 +1,12 @@
+services:
+  api:
+    container_name: text2pdf-api
+    build: .
+    ports:
+      - 3000:3000
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 512M
+    
