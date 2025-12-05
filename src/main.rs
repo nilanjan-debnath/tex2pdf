@@ -1,19 +1,21 @@
 use axum::{
-    routing::get,
+    extract::Multipart,
+    routing::{get, post},
     Router,
-    response::{Json, IntoResponse},
-    http::StatusCode,
+    response::{Json, IntoResponse, Response},
+    http::{StatusCode, header},
+    body::Body,
 };
 use serde_json::json;
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+mod converter;
+
 #[tokio::main]
 async fn main() {
     dotenvy::dotenv().ok();
     // 1. Initialize Logging
-    // This sets up "env_filter" which reads the RUST_LOG environment variable.
-    // If RUST_LOG is not set, it defaults to "tex2pdf=debug,tower_http=debug".
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -22,31 +24,24 @@ async fn main() {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    // 2. Create the router and define the endpoints
+    // 2. Create the router
     let app = Router::new()
         .route("/root", get(root_handler))
         .route("/healthz", get(health_handler))
-        // 3. Add the middleware layer to log requests
+        .route("/convert", post(convert_handler))
         .layer(TraceLayer::new_for_http());
 
-    // 4. Define the address to listen on (localhost:3000)
     let addr = "0.0.0.0:3000";
-    
-    // We can now use tracing::info! instead of println!
     tracing::info!("Server running on http://{}", addr);
 
-    // 5. Create a TCP listener
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-
-    // 6. Start the server
     axum::serve(listener, app).await.unwrap();
 }
 
-// Handler for GET /root
-async fn root_handler() -> impl IntoResponse {
-    // You can also add manual logs inside handlers if you want specific details
-    tracing::debug!("Root handler accessed");
+// --- HANDLERS ---
 
+async fn root_handler() -> impl IntoResponse {
+    tracing::debug!("Root handler accessed");
     Json(json!({
         "name": "tex2pdf API",
         "version": "0.1.0",
@@ -54,10 +49,55 @@ async fn root_handler() -> impl IntoResponse {
     }))
 }
 
-// Handler for GET /healthz
 async fn health_handler() -> impl IntoResponse {
     tracing::debug!("Health handler accessed");
-    (StatusCode::OK, Json(json!({
-        "status": "ok",
-    })))
+    (StatusCode::OK, Json(json!({"status": "ok"})))
+}
+
+async fn convert_handler(mut multipart: Multipart) -> Response {
+    tracing::debug!("Convert handler accessed");
+
+    let mut tex_content = String::new();
+
+    while let Ok(Some(field)) = multipart.next_field().await {
+        match field.text().await {
+            Ok(text) => {
+                tex_content = text;
+                break; 
+            }
+            Err(e) => {
+                tracing::error!("Failed to read field text: {}", e);
+                return (StatusCode::BAD_REQUEST, "Failed to read upload").into_response();
+            }
+        }
+    }
+
+    if tex_content.is_empty() {
+        return (StatusCode::BAD_REQUEST, "No content found in upload").into_response();
+    }
+
+    // Run conversion in a blocking thread
+    let result = tokio::task::spawn_blocking(move || {
+        converter::convert_tex_to_pdf(tex_content)
+    }).await;
+
+    match result {
+        Err(e) => {
+            tracing::error!("Conversion task failed: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, "Internal processing error").into_response()
+        },
+        Ok(converter_result) => match converter_result {
+            Ok(pdf_bytes) => {
+                Response::builder()
+                    .status(StatusCode::OK)
+                    .header(header::CONTENT_TYPE, "application/pdf")
+                    .header(header::CONTENT_DISPOSITION, "attachment; filename=\"output.pdf\"")
+                    .body(Body::from(pdf_bytes))
+                    .unwrap()
+            },
+            Err(err_msg) => {
+                (StatusCode::INTERNAL_SERVER_ERROR, err_msg).into_response()
+            }
+        }
+    }
 }

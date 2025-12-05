@@ -66,22 +66,21 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
 # ---------------------------------------------------
 FROM alpine:3.22 AS runtime
 
+# Install runtime dependencies including Tectonic libraries
 RUN apk add --no-cache \
     curl \
+    libgcc \
+    libstdc++ \
     fontconfig \
     graphite2 \
     harfbuzz \
-    icu-libs \
-    libgcc \
-    libstdc++ \
-    libc6-compat \
-    gcompat
+    icu-libs
 
 # Creating a non root user (Alpine syntax)
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
-WORKDIR /app
 ENV XDG_CACHE_HOME=/app/.cache
+WORKDIR /app
 RUN mkdir -p $XDG_CACHE_HOME && chown -R appuser:appgroup /app
 
 # Copy the binary files from builder stage

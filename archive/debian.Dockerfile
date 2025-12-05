@@ -3,7 +3,7 @@
 # ---------------------------------------------------
 # 1. PLANNER STAGE
 # ---------------------------------------------------
-FROM rust:1.91.1-alpine3.22 AS planner
+FROM rust:slim-bookworm AS planner
 WORKDIR /app
 RUN cargo install cargo-chef
 COPY . .
@@ -13,27 +13,19 @@ RUN cargo chef prepare --recipe-path recipe.json
 # ---------------------------------------------------
 # 2. BUILDER STAGE
 # ---------------------------------------------------
-FROM rust:1.91.1-alpine3.22 AS build
+FROM rust:slim-bookworm AS build
 
-# Install build dependencies including Tectonic requirements
-RUN apk add --no-cache \
-    build-base \
-    openssl-dev \
-    openssl-libs-static \
-    pkgconfig \
-    fontconfig-dev \
-    graphite2-dev \
-    harfbuzz-dev \
-    icu-dev \
-    zlib-dev
-
-# Ensure OpenSSL is linked statically
-ENV OPENSSL_STATIC=1
-ENV OPENSSL_LIB_DIR=/usr/lib
-ENV OPENSSL_INCLUDE_DIR=/usr/include
-
-# Force C++17 to match ICU headers
-ENV CXXFLAGS="-std=c++17"
+# Install all required development libraries for Tectonic
+RUN apt-get update && apt-get install -y \
+    pkg-config \
+    libssl-dev \
+    libfontconfig1-dev \
+    libgraphite2-dev \
+    libharfbuzz-dev \
+    libicu-dev \
+    zlib1g-dev \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN cargo install cargo-chef sccache --locked
 
@@ -64,24 +56,23 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
 # ---------------------------------------------------
 # 3. RUNTIME STAGE
 # ---------------------------------------------------
-FROM alpine:3.22 AS runtime
+FROM debian:bookworm-slim AS runtime
 
-RUN apk add --no-cache \
+# Install runtime dependencies for Tectonic
+RUN apt-get update && apt-get install -y \
     curl \
-    fontconfig \
-    graphite2 \
-    harfbuzz \
-    icu-libs \
-    libgcc \
-    libstdc++ \
-    libc6-compat \
-    gcompat
+    ca-certificates \
+    libfontconfig1 \
+    libgraphite2-3 \
+    libharfbuzz0b \
+    libicu72 \
+    && rm -rf /var/lib/apt/lists/*
 
-# Creating a non root user (Alpine syntax)
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+# Creating a non root user (Debian syntax)
+RUN groupadd -r appgroup && useradd -r -g appgroup appuser
 
-WORKDIR /app
 ENV XDG_CACHE_HOME=/app/.cache
+WORKDIR /app
 RUN mkdir -p $XDG_CACHE_HOME && chown -R appuser:appgroup /app
 
 # Copy the binary files from builder stage

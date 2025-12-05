@@ -6,9 +6,9 @@ services:
       - 3000:3000
     env_file:
       - .env
-    deploy:
-      resources:
-        limits:
-          cpus: "0.25"
-          memory: 512M
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: "0.25"
+    #       memory: 512M
     
