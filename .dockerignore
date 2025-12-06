@@ -1,5 +1,9 @@
-/target
-.DS_Store
 .git
 .gitignore
+
+.DS_Store
+.vscode
 .env
+/target
+
+/archive
