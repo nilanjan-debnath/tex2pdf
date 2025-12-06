@@ -83,7 +83,7 @@ USER appuser
 
 EXPOSE 3000
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=180s --start-period=300s --retries=3 \
   CMD curl -f http://localhost:3000/healthz || exit 1
 
 ENTRYPOINT ["/usr/local/bin/app"]

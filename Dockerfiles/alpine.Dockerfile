@@ -1,10 +1,21 @@
 # syntax=docker/dockerfile:1
 
 # ---------------------------------------------------
+# Alpine Dockerfile for tex2pdf API
+# ---------------------------------------------------
+# NOTE: Due to musl libc incompatibility with tectonic's internal
+# tokio runtime (causes "Cannot start a runtime from within a runtime"),
+# this Dockerfile uses a hybrid approach:
+# - Build the Rust API without tectonic library
+# - Use tectonic CLI from Alpine repos for PDF conversion
+# ---------------------------------------------------
+
+# ---------------------------------------------------
 # 1. PLANNER STAGE
 # ---------------------------------------------------
 FROM rust:1.91.1-alpine3.22 AS planner
 WORKDIR /app
+RUN apk add --no-cache musl-dev
 RUN cargo install cargo-chef
 COPY . .
 RUN cargo chef prepare --recipe-path recipe.json
@@ -15,25 +26,17 @@ RUN cargo chef prepare --recipe-path recipe.json
 # ---------------------------------------------------
 FROM rust:1.91.1-alpine3.22 AS build
 
-# Install build dependencies including Tectonic requirements
+# Install build dependencies (no tectonic deps needed since we use CLI)
 RUN apk add --no-cache \
     build-base \
     openssl-dev \
     openssl-libs-static \
-    pkgconfig \
-    fontconfig-dev \
-    graphite2-dev \
-    harfbuzz-dev \
-    icu-dev \
-    zlib-dev
+    pkgconfig
 
 # Ensure OpenSSL is linked statically
 ENV OPENSSL_STATIC=1
 ENV OPENSSL_LIB_DIR=/usr/lib
 ENV OPENSSL_INCLUDE_DIR=/usr/include
-
-# Force C++17 to match ICU headers
-ENV CXXFLAGS="-std=c++17"
 
 RUN cargo install cargo-chef sccache --locked
 
@@ -45,20 +48,20 @@ WORKDIR /app
 # Copy ONLY the recipe from the planner stage
 COPY --from=planner /app/recipe.json recipe.json
 
-# Build dependencies with external-harfbuzz feature
+# Build dependencies
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
     --mount=type=cache,target=$SCCACHE_DIR,sharing=locked \
-    cargo chef cook --release --recipe-path recipe.json --features tectonic/external-harfbuzz
+    cargo chef cook --release --recipe-path recipe.json
 
 # NOW copy the actual source code
 COPY . .
 
-# Build the application with external-harfbuzz feature
+# Build the application
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
     --mount=type=cache,target=$SCCACHE_DIR,sharing=locked \
-    cargo build --release --bin tex2pdf --features tectonic/external-harfbuzz
+    cargo build --release --bin tex2pdf
 
 
 # ---------------------------------------------------
@@ -66,16 +69,13 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
 # ---------------------------------------------------
 FROM alpine:3.22 AS runtime
 
+# Install runtime dependencies including tectonic CLI
 RUN apk add --no-cache \
     curl \
+    tectonic \
     fontconfig \
-    graphite2 \
-    harfbuzz \
-    icu-libs \
     libgcc \
-    libstdc++ \
-    libc6-compat \
-    gcompat
+    libstdc++
 
 # Creating a non root user (Alpine syntax)
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
@@ -92,7 +92,7 @@ USER appuser
 
 EXPOSE 3000
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=180s --start-period=300s --retries=3 \
   CMD curl -f http://localhost:3000/healthz || exit 1
 
 ENTRYPOINT ["/usr/local/bin/app"]

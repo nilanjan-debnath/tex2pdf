@@ -50,8 +50,52 @@ async fn root_handler() -> impl IntoResponse {
 }
 
 async fn health_handler() -> impl IntoResponse {
-    tracing::debug!("Health handler accessed");
-    (StatusCode::OK, Json(json!({"status": "ok"})))
+    tracing::debug!("Health handler accessed - running TeX compilation check");
+    
+    // Simple test LaTeX document to verify tectonic is working
+    let test_tex = r#"\documentclass{article}
+\begin{document}
+Health check passed.
+\end{document}"#.to_string();
+    
+    let start = std::time::Instant::now();
+    
+    // Run conversion in a blocking thread
+    let result = tokio::task::spawn_blocking(move || {
+        converter::convert_tex_to_pdf(test_tex)
+    }).await;
+    
+    let elapsed_ms = start.elapsed().as_millis();
+    
+    match result {
+        Err(e) => {
+            tracing::error!("Health check failed - task error: {}", e);
+            (StatusCode::SERVICE_UNAVAILABLE, Json(json!({
+                "status": "unhealthy",
+                "error": format!("Task execution failed: {}", e),
+                "check": "tex_compilation"
+            })))
+        },
+        Ok(converter_result) => match converter_result {
+            Ok(pdf_bytes) => {
+                tracing::info!("Health check passed - compiled {} bytes in {}ms", pdf_bytes.len(), elapsed_ms);
+                (StatusCode::OK, Json(json!({
+                    "status": "ok",
+                    "check": "tex_compilation",
+                    "pdf_size_bytes": pdf_bytes.len(),
+                    "conversion_time_ms": elapsed_ms
+                })))
+            },
+            Err(err_msg) => {
+                tracing::error!("Health check failed - conversion error: {}", err_msg);
+                (StatusCode::SERVICE_UNAVAILABLE, Json(json!({
+                    "status": "error",
+                    "error": err_msg,
+                    "check": "tex_compilation"
+                })))
+            }
+        }
+    }
 }
 
 async fn convert_handler(mut multipart: Multipart) -> Response {

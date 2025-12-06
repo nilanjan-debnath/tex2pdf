@@ -8,6 +8,11 @@ services:
       - 3000:3000
     env_file:
       - .env
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 512M
 
   alpine:
     container_name: text2pdf-alpine
@@ -18,7 +23,7 @@ services:
       - 3000:3000
     env_file:
       - .env
-      
+
   debian:
     container_name: text2pdf-debian
     build:
