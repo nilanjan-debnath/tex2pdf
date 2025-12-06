@@ -61,7 +61,6 @@ FROM alpine:3.22 AS runtime
 
 # Install runtime dependencies including tectonic CLI
 RUN apk add --no-cache \
-    curl \
     tectonic \
     fontconfig \
     libgcc \
@@ -81,8 +80,5 @@ COPY --from=build --chown=appuser:appgroup /app/target/release/tex2pdf /usr/loca
 USER appuser
 
 EXPOSE 3000
-
-# HEALTHCHECK --interval=30s --timeout=200s --start-period=200s --retries=3 \
-#   CMD curl -f http://localhost:3000/healthz || exit 1
 
 ENTRYPOINT ["/usr/local/bin/app"]

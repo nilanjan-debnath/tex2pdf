@@ -5,5 +5,5 @@
 .vscode
 .env
 /target
-
+*.pdf
 /archive
