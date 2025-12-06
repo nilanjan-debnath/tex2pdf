@@ -32,8 +32,8 @@ pub fn convert_tex_to_pdf(tex_source: String) -> Result<Vec<u8>, String> {
     // Check if PDF was created - this is the true success indicator
     // Tectonic writes notes/warnings to stderr even on success
     if output_pdf.exists() {
-        let pdf_data = std::fs::read(&output_pdf)
-            .map_err(|e| format!("Failed to read output PDF: {}", e))?;
+        let pdf_data =
+            std::fs::read(&output_pdf).map_err(|e| format!("Failed to read output PDF: {}", e))?;
 
         tracing::debug!(
             "Tectonic CLI conversion successful. PDF size: {} bytes",
@@ -46,23 +46,24 @@ pub fn convert_tex_to_pdf(tex_source: String) -> Result<Vec<u8>, String> {
     // If PDF doesn't exist, it's a real error
     let stderr = String::from_utf8_lossy(&output.stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
-    
+
     // Filter out "note:" lines which are just informational
     let error_lines: Vec<&str> = stderr
         .lines()
         .chain(stdout.lines())
         .filter(|line| {
             let trimmed = line.trim();
-            !trimmed.is_empty() 
-                && !trimmed.starts_with("note:")
-                && !trimmed.starts_with("warning:")
+            !trimmed.is_empty() && !trimmed.starts_with("note:") && !trimmed.starts_with("warning:")
         })
         .collect();
 
     let error_msg = if error_lines.is_empty() {
         // No real errors, but PDF still not created - check if exit code was non-zero
         if !output.status.success() {
-            format!("Tectonic exited with code {:?} but no error message", output.status.code())
+            format!(
+                "Tectonic exited with code {:?} but no error message",
+                output.status.code()
+            )
         } else {
             "Tectonic completed but no PDF was generated".to_string()
         }
