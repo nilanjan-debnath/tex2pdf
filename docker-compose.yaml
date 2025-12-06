@@ -1,6 +1,6 @@
 services:
   api:
-    container_name: text2pdf-api
+    container_name: text2pdf-api-debian
     build:
       context: .
       dockerfile: Dockerfile
@@ -13,25 +13,3 @@ services:
         limits:
           cpus: "0.25"
           memory: 512M
-
-  alpine:
-    container_name: text2pdf-alpine
-    build:
-      context: .
-      dockerfile: Dockerfiles/alpine.Dockerfile
-    ports:
-      - 3000:3000
-    env_file:
-      - .env
-
-  debian:
-    container_name: text2pdf-debian
-    build:
-      context: .
-      dockerfile: Dockerfiles/debian.Dockerfile
-    ports:
-      - 3000:3000
-    env_file:
-      - .env
-
-    
